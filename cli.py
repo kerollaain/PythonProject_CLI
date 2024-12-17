@@ -1,68 +1,76 @@
 import os
-import sys
+import PySimpleGUI as sg
+import subprocess
 
-LABS_DIR = "labs"
-LAB_FILE = "lab{num}/lab{num}.py"
-README_FILE = "lab{num}/README.md"
+def get_lab_list(labs_folder="labs"):
+    """Зчитує список лабораторних робіт у вказаній папці."""
+    labs = []
+    if os.path.exists(labs_folder):
+        for folder in os.listdir(labs_folder):
+            lab_path = os.path.join(labs_folder, folder)
+            if os.path.isdir(lab_path):
+                lab_script = os.path.join(lab_path, f"{folder}.py")
+                readme_file = os.path.join(lab_path, "README.md")
+                if os.path.exists(lab_script):
+                    labs.append({
+                        "name": folder,
+                        "script": lab_script,
+                        "readme": readme_file if os.path.exists(readme_file) else None
+                    })
+    return labs
 
-def list_labs():
-    if not os.path.exists(LABS_DIR):
-        print("\nПапка з лабораторними не знайдена.")
-        return
-
-    labs = sorted([d for d in os.listdir(LABS_DIR) if d.startswith("lab") and os.path.isdir(os.path.join(LABS_DIR, d))])
-    if not labs:
-        print("\nЛабораторні роботи не знайдено.")
-        return
-
-    print("\nДоступні лабораторні роботи:")
-    for lab in labs:
-        lab_number = lab.replace("lab", "")
-        readme_path = os.path.join(LABS_DIR, lab, "README.md")
-        description = "Опис недоступний"
-        if os.path.isfile(readme_path):
-            with open(readme_path, "r", encoding="utf-8") as f:
-                description = f.readline().strip()
-        print(f"{lab_number}. {lab} - {description}")
-
-def run_lab(lab_number):
-    lab_path = os.path.join(LABS_DIR, LAB_FILE.format(num=lab_number))
-    if not os.path.isfile(lab_path):
-        print(f"\nЛабораторну роботу {lab_number} не знайдено.")
-        return
-
-    print(f"\nЗапуск лабораторної роботи {lab_number}...")
-    try:
-        exec(open(lab_path).read(), {})
-        print("\nЛабораторну виконано успішно!")
-    except Exception as e:
-        print(f"\nПомилка при виконанні лабораторної роботи {lab_number}: {e}")
-
-def print_usage():
-    print("\nВикористання:")
-    print("  python cli.py list                 # Список лабораторних робіт")
-    print("  python cli.py run <номер_роботи>   # Запуск лабораторної роботи")
+def read_readme(file_path):
+    """Зчитує вміст README.md, якщо файл існує."""
+    if file_path and os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8") as file:
+            return file.read()
+    return "Опис відсутній."
 
 def main():
-    if len(sys.argv) < 2:
-        print("\nПомилка: команда не вказана.")
-        print_usage()
-        return
+    sg.theme("LightBlue")
 
-    command = sys.argv[1]
+    labs = get_lab_list()
 
-    if command == "list":
-        list_labs()
-    elif command == "run":
-        if len(sys.argv) < 3:
-            print("\nПомилка: номер лабораторної роботи не вказано.")
-            print_usage()
-        else:
-            run_lab(sys.argv[2])
-    else:
-        print(f"\nПомилка: невідома команда '{command}'.")
-        print_usage()
+    layout = [
+        [sg.Text("Список лабораторних робіт:", font=("Arial", 14))],
+        [sg.Listbox(values=[lab['name'] for lab in labs], size=(30, 10), key="-LAB_LIST-", enable_events=True)],
+        [sg.Text("Опис лабораторної роботи:", font=("Arial", 12))],
+        [sg.Multiline(size=(50, 15), key="-DESCRIPTION-", disabled=True)],
+        [
+            sg.Button("Запустити", key="-RUN-"),
+            sg.Button("Вийти", key="-EXIT-")
+        ]
+    ]
+
+    window = sg.Window("Лабораторні роботи", layout)
+
+    while True:
+        event, values = window.read()
+
+        if event == sg.WINDOW_CLOSED or event == "-EXIT-":
+            break
+
+        if event == "-LAB_LIST-":
+            selected_lab = values["-LAB_LIST-"]
+            if selected_lab:
+                lab_name = selected_lab[0]
+                lab_info = next((lab for lab in labs if lab["name"] == lab_name), None)
+                if lab_info:
+                    description = read_readme(lab_info["readme"])
+                    window["-DESCRIPTION-"].update(description)
+
+        if event == "-RUN-":
+            selected_lab = values["-LAB_LIST-"]
+            if selected_lab:
+                lab_name = selected_lab[0]
+                lab_info = next((lab for lab in labs if lab["name"] == lab_name), None)
+                if lab_info:
+                    try:
+                        subprocess.run(["python", lab_info["script"]], check=True)
+                    except Exception as e:
+                        sg.popup_error(f"Помилка при запуску: {e}")
+
+    window.close()
 
 if __name__ == "__main__":
     main()
-
